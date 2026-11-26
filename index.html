@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>케미가드 (Chem-Guard) | 전국 화학사고 모니터링 및 안심 플랫폼</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/js/all.min.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap" />
+  <style>
+    body {
+      font-family: 'Noto Sans KR', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+    }
+    @keyframes radar-sweep {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .radar-sweep {
+      animation: radar-sweep 1.2s linear infinite;
+      transform-origin: center center;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+    }
+    .pulse-active {
+      animation: pulse-ring 2s infinite;
+    }
+    @keyframes pin-bounce {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -56%) scale(1.08); }
+    }
+    .user-pin-transition {
+      transition: all 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Global Header -->
+  <header style="padding-top:env(safe-area-inset-top,0px)" class="sticky top-0 z-40 bg-slate-900 text-white border-b border-slate-800 shadow-sm">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <button id="mobileSidebarToggle" type="button" class="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition" aria-label="사고 목록 열기">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center shadow-inner shrink-0">
+            <i class="fa-solid fa-shield-virus text-white text-lg"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold text-base sm:text-lg tracking-tight truncate">케미가드 (Chem-Guard)</span>
+              <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                전국 통합 모니터링망
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-400 hidden sm:block">환경부·화학물질안전원 연계 대국민 실시간 화학사고 안심 플랫폼</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2.5 shrink-0">
+        <span class="hidden md:inline-flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+          <i class="fa-regular fa-clock text-sky-400"></i>
+          <span id="liveClock">기준시각 동기화 중</span>
+        </span>
+        <button id="openReportModalBtn" type="button" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-sm font-semibold shadow-sm transition cursor-pointer">
+          <i class="fa-solid fa-bullhorn"></i>
+          <span>현장 제보</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="flex-1 max-w-[1600px] w-full mx-auto flex flex-col lg:flex-row relative">
+
+    <!-- Mobile Backdrop -->
+    <div id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/50 z-30 hidden lg:hidden"></div>
+
+    <!-- Left Sidebar: Incident List -->
+    <aside id="incidentSidebar" class="fixed lg:static inset-y-0 left-0 z-30 w-80 xl:w-96 bg-white border-r border-slate-200 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-out pt-16 lg:pt-0 lg:min-h-[calc(100vh-4rem)] shrink-0">
+      <div class="p-4 border-b border-slate-200 bg-slate-50/70">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+            발생 사고 목록
+          </h2>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">총 3건</span>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5 text-center text-[11px]">
+          <div class="bg-orange-50 border border-orange-200 rounded-md py-1 px-1.5">
+            <span class="text-orange-700 font-semibold">경계 1</span>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-md py-1 px-1.5">
+            <span class="text-amber-700 font-semibold">주의 1</span>
+          </div>
+          <div class="bg-emerald-50 border border-emerald-200 rounded-md py-1 px-1.5">
+            <span class="text-emerald-700 font-semibold">안전 1</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="incidentListContainer" class="p-3 space-y-2.5 overflow-y-auto flex-1">
+        <!-- Rendered dynamically by JS -->
+      </div>
+
+      <div class="p-3.5 border-t border-slate-200 bg-slate-50 text-xs text-slate-500 space-y-1">
+        <div class="flex items-center justify-between">
+          <span>긴급 화학사고 신고</span>
+          <span class="font-bold text-slate-700">119 / 128</span>
+        </div>
+        <p class="text-[11px] text-slate-400">사고 카드를 선택하면 우측 상세 모니터링 대시보드가 즉시 전환됩니다.</p>
+      </div>
+    </aside>
+
+    <!-- Right Main Dashboard -->
+    <main class="flex-1 p-4 sm:p-6 space-y-5 overflow-x-hidden">
+
+      <!-- Official Closure Banner (Shown for Incident 3) -->
+      <div id="closureBanner" class="hidden rounded-xl bg-emerald-50 border border-emerald-200 p-4 flex items-start gap-3 shadow-sm">
+        <div class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+          <i class="fa-solid fa-circle-check text-lg"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-bold text-emerald-900">사후관리 공식 종료 안내</span>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-600 text-white">공식 해제</span>
+          </div>
+          <p class="text-xs sm:text-sm text-emerald-800 mt-1">
+            본 사고는 환경부·지자체 합동 정밀조사 결과 대기·수질·토양 전 매체 기준 적합 판정을 받아 사후관리가 공식 종료되었습니다. 안심하고 일상생활이 가능합니다.
+          </p>
+        </div>
+      </div>
+
+      <!-- Top Summary & 4-Stage Traffic Light -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
+        <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="incElapsedBadge" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-slate-800 text-white">D+5</span>
+              <span id="incStageBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-bold">2단계: 주의</span>
+              <span id="incFacilityBadge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                <i class="fa-solid fa-industry text-slate-400"></i>
+                <span>A사업장</span>
+              </span>
+            </div>
+            <h1 id="incTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              울산 미포국가산단 불산(HF) 누출
+            </h1>
+            <p id="incSubtitle" class="text-xs sm:text-sm text-slate-600">
+              대기 HF 기준 0.1ppm · 수질 불소 기준 1.5mg/L · 예상 종료 D-3
+            </p>
+          </div>
+
+          <!-- 4-Stage Traffic Light -->
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 sm:p-3.5 shrink-0">
+            <div class="text-[11px] font-semibold text-slate-500 mb-2 flex items-center justify-between gap-4">
+              <span>대국민 안심 신호등 (4단계)</span>
+              <span id="trafficLightStatusText" class="font-bold text-amber-600">현재: 주의 단계</span>
+            </div>
+            <div id="trafficLightContainer" class="grid grid-cols-4 gap-2">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GPS Location & Custom Action Guidelines + SVG Radius Map -->
+      <section class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+        <!-- Left: GPS & 4 Action Cards -->
+        <div class="xl:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 flex flex-col justify-between gap-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-location-crosshairs text-sky-600"></i>
+                내 위치 기반 맞춤 행동요령
+              </h2>
+              <p id="gpsStatusLabel" class="text-xs text-slate-500 mt-0.5">
+                [GPS 탐색]을 누르면 현재 위치 반경에 따른 행동요령을 안내합니다.
+              </p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button id="gpsSearchBtn" type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer">
+                <i id="gpsBtnIcon" class="fa-solid fa-satellite-dish"></i>
+                <span id="gpsBtnText">GPS 탐색</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Zone Simulation Quick Switcher -->
+          <div class="flex items-center gap-2 flex-wrap bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+            <span class="text-[11px] font-semibold text-slate-500 mr-1">반경 시뮬레이션:</span>
+            <button type="button" data-zone-idx="0" class="zone-sim-btn px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer">0.4km (500m 이내)</button>
+            <button type="button" data-zone-idx="1" class="zone-sim-btn px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer">1.1km (1.5km 이내)</button>
+            <button type="button" data-zone-idx="2" class="zone-sim-btn px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer">1.9km (2.2km 이내)</button>
+            <button type="button" data-zone-idx="3" class="zone-sim-btn px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer">2.6km (안전권)</button>
+          </div>
+
+          <!-- 4 Action Cards -->
+          <div id="actionCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Right: SVG Concentric Radius Map -->
+        <div class="xl:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 flex flex-col">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-radar text-indigo-600"></i>
+                사고 반경 영향권 지도
+              </h2>
+              <p class="text-xs text-slate-500">500m · 1.5km · 2.2km 동심원 반경 및 내 위치</p>
+            </div>
+            <span id="mapWindBadge" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">
+              <i class="fa-solid fa-wind text-sky-500"></i>
+              <span>북동풍 2.4m/s</span>
+            </span>
+          </div>
+
+          <!-- Map Canvas -->
+          <div class="relative flex-1 min-h-[290px] bg-slate-900 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+            <svg viewBox="0 0 360 320" class="w-full h-full max-h-[320px]" aria-label="사고 반경 지도">
+              <defs>
+                <radialGradient id="dangerGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#ef4444" stop-opacity="0.32" />
+                  <stop offset="100%" stop-color="#ef4444" stop-opacity="0.08" />
+                </radialGradient>
+                <radialGradient id="warnGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.18" />
+                  <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.04" />
+                </radialGradient>
+                <radialGradient id="watchGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.14" />
+                  <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.02" />
+                </radialGradient>
+              </defs>
+
+              <!-- Subtle grid -->
+              <g stroke="#1e293b" stroke-width="1">
+                <line x1="0" y1="80" x2="360" y2="80" />
+                <line x1="0" y1="160" x2="360" y2="160" />
+                <line x1="0" y1="240" x2="360" y2="240" />
+                <line x1="90" y1="0" x2="90" y2="320" />
+                <line x1="180" y1="0" x2="180" y2="320" />
+                <line x1="270" y1="0" x2="270" y2="320" />
+              </g>
+
+              <!-- Concentric Radius Circles (Center: 180, 160) -->
+              <!-- 2.2km -->
+              <circle cx="180" cy="160" r="132" fill="url(#watchGrad)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5 4" />
+              <!-- 1.5km -->
+              <circle cx="180" cy="160" r="90" fill="url(#warnGrad)" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4 3" />
+              <!-- 500m -->
+              <circle cx="180" cy="160" r="42" fill="url(#dangerGrad)" stroke="#ef4444" stroke-width="2" />
+
+              <!-- Radar Sweep Overlay (Hidden unless scanning) -->
+              <g id="svgRadarSweep" class="hidden">
+                <g class="radar-sweep" style="transform-origin: 180px 160px;">
+                  <path d="M180,160 L180,28 A132,132 0 0,1 294,94 Z" fill="#38bdf8" fill-opacity="0.22" />
+                  <line x1="180" y1="160" x2="180" y2="28" stroke="#38bdf8" stroke-width="2" />
+                </g>
+              </g>
+
+              <!-- Radius Labels -->
+              <text x="180" y="114" text-anchor="middle" fill="#fca5a5" font-size="10" font-weight="700">500m</text>
+              <text x="180" y="66" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="700">1.5km</text>
+              <text x="180" y="24" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="700">2.2km</text>
+
+              <!-- Center Facility Marker -->
+              <circle cx="180" cy="160" r="7" fill="#ef4444" stroke="#ffffff" stroke-width="2" />
+              <rect x="136" y="172" width="88" height="20" rx="5" fill="#0f172a" fill-opacity="0.88" stroke="#475569" stroke-width="1" />
+              <text id="svgFacilityLabel" x="180" y="185" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="700">A사업장</text>
+
+              <!-- User Location Pin -->
+              <g id="svgUserPinGroup" class="user-pin-transition" transform="translate(238, 122)">
+                <circle cx="0" cy="0" r="14" fill="#38bdf8" fill-opacity="0.28" class="animate-ping" />
+                <circle cx="0" cy="0" r="7" fill="#0284c7" stroke="#ffffff" stroke-width="2.5" />
+                <rect x="-32" y="-29" width="64" height="18" rx="4" fill="#0284c7" />
+                <text x="0" y="-17" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="700">내 위치</text>
+              </g>
+            </svg>
+
+            <!-- Distance Readout Overlay -->
+            <div class="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-[11px] bg-slate-950/80 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-700/80 text-slate-200">
+              <span id="mapDistanceReadout" class="font-semibold text-sky-300">추정 이격거리: 1.1km (1.5km 반경 내)</span>
+              <span id="mapCoordReadout" class="text-slate-400 hidden sm:inline">시뮬레이션 좌표</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Post-Accident 4-Stage Roadmap & Judgment Criteria -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-route text-emerald-600"></i>
+              사후관리 4단계 로드맵 &amp; 상태 트래커
+            </h2>
+            <p id="roadmapSummaryText" class="text-xs sm:text-sm text-slate-600 mt-0.5">
+              대기 3회 연속 기준 충족률 2/3회 · 예상 종료 D-3
+            </p>
+          </div>
+          <button id="openCriteriaModalBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs sm:text-sm font-semibold border border-slate-300 transition cursor-pointer shrink-0">
+            <i class="fa-solid fa-scale-balanced text-indigo-600"></i>
+            <span>판정 기준</span>
+          </button>
+        </div>
+
+        <div id="roadmapStepsContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <!-- Rendered dynamically -->
+        </div>
+      </section>
+
+      <!-- Environmental Measurement Chart (Chart.js) -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-chart-line text-blue-600"></i>
+              화학물질 매체별 실측 추이
+            </h2>
+            <p id="chartSubtitle" class="text-xs text-slate-500 mt-0.5">
+              D-Day부터 오늘까지 6개 시점 실측 농도 및 주민 관리기준 비교
+            </p>
+          </div>
+          <!-- Air / Water Tabs -->
+          <div class="inline-flex p-1 rounded-xl bg-slate-100 border border-slate-200 self-start sm:self-auto">
+            <button id="tabAirBtn" type="button" data-medium="air" class="medium-tab-btn px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition cursor-pointer">
+              <i class="fa-solid fa-wind mr-1.5"></i>대기
+            </button>
+            <button id="tabWaterBtn" type="button" data-medium="water" class="medium-tab-btn px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition cursor-pointer">
+              <i class="fa-solid fa-droplet mr-1.5"></i>수질
+            </button>
+          </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-3.5">
+            <div class="text-xs text-slate-500 font-medium">최고 실측값 (누적)</div>
+            <div class="mt-1 flex items-baseline gap-2">
+              <span id="summaryPeakValue" class="text-xl font-extrabold text-slate-900">0.42 ppm</span>
+              <span id="summaryLatestValue" class="text-xs text-slate-500">(최근 0.04 ppm)</span>
+            </div>
+          </div>
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-3.5">
+            <div class="text-xs text-slate-500 font-medium">현재 기준 판정</div>
+            <div class="mt-1.5 flex items-center gap-2">
+              <span id="summaryStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold">적합</span>
+              <span id="summaryStatusNote" class="text-xs text-slate-600">최근 측정치 기준 이내</span>
+            </div>
+          </div>
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-3.5">
+            <div class="text-xs text-slate-500 font-medium">주민 관리기준 (임계선)</div>
+            <div class="mt-1 flex items-baseline gap-2">
+              <span id="summaryLimitValue" class="text-xl font-extrabold text-rose-600">0.1 ppm</span>
+              <span id="summarySubstanceName" class="text-xs text-slate-500">불화수소(HF)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart.js Fixed-Height Container -->
+        <div class="relative h-72 w-full">
+          <canvas id="measurementChart"></canvas>
+        </div>
+      </section>
+
+      <!-- Live Citizen Incident Reports Feed -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-comments text-rose-500"></i>
+              실시간 주민 현장 제보 현황
+              <span id="reportCountBadge" class="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">0건</span>
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              주민이 직접 등록한 악취·연무·신체 증상 제보 내역이 실시간으로 반영됩니다. (브라우저 저장 유지)
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="filterIncidentReportsBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 transition cursor-pointer">
+              현재 사고만 보기
+            </button>
+            <button id="openReportModalBtn2" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer">
+              <i class="fa-solid fa-plus"></i>
+              <span>새 제보 등록</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="citizenReportsFeed" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <!-- Rendered dynamically -->
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal 1: Judgment Criteria Modal (판정 기준) -->
+  <div id="criteriaModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <h3 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-scale-balanced text-indigo-600"></i>
+          사후관리 매체별 공식 종료 판정 기준
+        </h3>
+        <button id="closeCriteriaModalBtn" type="button" class="w-8 h-8 rounded-lg hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer" aria-label="닫기">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-4 text-sm text-slate-700">
+        <div class="p-3.5 rounded-xl bg-sky-50 border border-sky-200">
+          <div class="font-bold text-sky-900 flex items-center gap-2 mb-1">
+            <i class="fa-solid fa-wind text-sky-600"></i>
+            1. 대기 매체 종료 기준
+          </div>
+          <p class="text-xs sm:text-sm text-sky-800 leading-relaxed">
+            사고지점 및 인근 주거지역 3개소 이상에서 <strong>연속 3회 이상</strong> 물질별 주민 관리기준(불산 0.1ppm, 질산 0.5ppm, 황산 흄 0.2mg/m³) 이하로 검출되고 악취 민원이 해소된 경우 적합 판정.
+          </p>
+        </div>
+        <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-200">
+          <div class="font-bold text-blue-900 flex items-center gap-2 mb-1">
+            <i class="fa-solid fa-droplet text-blue-600"></i>
+            2. 수질 매체 종료 기준
+          </div>
+          <p class="text-xs sm:text-sm text-blue-800 leading-relaxed">
+            인근 하천·우수관거·방류수 수질 측정 결과 pH 중성 범위(5.8~8.5) 유지 및 유해물질 농도(불소 1.5mg/L, 질산성질소 10.0mg/L, 황산이온 200mg/L) 이하 연속 충족 시 적합 판정.
+          </p>
+        </div>
+        <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+          <div class="font-bold text-amber-900 flex items-center gap-2 mb-1">
+            <i class="fa-solid fa-mound text-amber-600"></i>
+            3. 토양 및 잔류 오염 종료 기준
+          </div>
+          <p class="text-xs sm:text-sm text-amber-800 leading-relaxed">
+            반경 500m 내 토양 시료 채취 분석 결과 토양오염우려기준(1지역) 미만 확인 및 중화제·흡착제 폐기물 전량 반출 완료 시 최종 사후관리 종료 승인.
+          </p>
+        </div>
+      </div>
+      <div class="px-5 py-3.5 border-t border-slate-200 bg-slate-50 flex justify-end">
+        <button id="confirmCriteriaModalBtn" type="button" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold cursor-pointer">
+          확인
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Citizen Incident Report Modal (현장 제보) -->
+  <div id="reportModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-rose-50">
+        <h3 class="text-base sm:text-lg font-bold text-rose-950 flex items-center gap-2">
+          <i class="fa-solid fa-bullhorn text-rose-600"></i>
+          주민 현장 제보 등록
+        </h3>
+        <button id="closeReportModalBtn" type="button" class="w-8 h-8 rounded-lg hover:bg-rose-100 text-rose-700 flex items-center justify-center cursor-pointer" aria-label="닫기">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form id="reportForm" class="p-5 overflow-y-auto space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">대상 사고 선택</label>
+          <select id="reportIncidentSelect" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-2">제보 유형 선택 <span class="text-rose-500">*</span></label>
+          <div class="grid grid-cols-2 gap-2" id="reportTypeGrid">
+            <button type="button" data-type="악취·가스 냄새" class="report-type-btn px-3 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2 transition cursor-pointer">
+              <i class="fa-solid fa-smog text-amber-500"></i>
+              <span>악취·가스 냄새</span>
+            </button>
+            <button type="button" data-type="연무·연기" class="report-type-btn px-3 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2 transition cursor-pointer">
+              <i class="fa-solid fa-cloud text-slate-500"></i>
+              <span>연무·연기</span>
+            </button>
+            <button type="button" data-type="신체 증상" class="report-type-btn px-3 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2 transition cursor-pointer">
+              <i class="fa-solid fa-head-side-cough text-rose-500"></i>
+              <span>신체 증상</span>
+            </button>
+            <button type="button" data-type="수질·토양 이상" class="report-type-btn px-3 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2 transition cursor-pointer">
+              <i class="fa-solid fa-water text-sky-500"></i>
+              <span>수질·토양 이상</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label for="reportLocationInput" class="block text-xs font-bold text-slate-700">현재 위치 <span class="text-rose-500">*</span></label>
+            <button id="autoFillLocationBtn" type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700 cursor-pointer">
+              <i class="fa-solid fa-location-dot"></i>
+              <span>위치 자동 채우기</span>
+            </button>
+          </div>
+          <input id="reportLocationInput" type="text" required placeholder="예: 울산 남구 야음동 인근 (반경 1.1km)" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500" />
+        </div>
+
+        <div>
+          <label for="reportDetailInput" class="block text-xs font-bold text-slate-700 mb-1.5">상세 내용 <span class="text-rose-500">*</span></label>
+          <textarea id="reportDetailInput" rows="3" required placeholder="감지된 냄새, 연기 방향, 눈·목 따가움 등 현장 상황을 구체적으로 적어주세요." class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"></textarea>
+        </div>
+
+        <div id="reportFormError" class="hidden text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+
+        <div class="pt-2 flex items-center justify-end gap-2">
+          <button id="cancelReportModalBtn" type="button" class="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold cursor-pointer">
+            취소
+          </button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold shadow-sm cursor-pointer">
+            제보 제출하기
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toastBanner" class="fixed bottom-5 right-5 z-50 hidden items-center gap-2.5 px-4 py-3 rounded-xl bg-slate-900 text-white text-xs sm:text-sm font-medium shadow-xl border border-slate-700">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMessage">알림</span>
+  </div>
+
+  <script>
+    // =========================================================
+    // 1. Dataset: 3 Chemical Incident Scenarios
+    // =========================================================
+    const INCIDENTS = [
+      {
+        id: 'ulsan-hf',
+        title: '울산 미포국가산단 불산(HF) 누출',
+        chemical: '불화수소 (HF)',
+        facility: 'A사업장',
+        region: '울산 남구 미포국가산단',
+        elapsed: 'D+5',
+        stageLevel: 2, // 1:안전, 2:주의, 3:경계, 4:심각
+        stageLabel: '2단계: 주의',
+        summarySubtitle: '대기 HF 기준 0.1ppm · 수질 불소 기준 1.5mg/L · 예상 종료 D-3',
+        roadmapSummary: '대기 3회 연속 기준 충족률 2/3회 · 예상 종료 D-3',
+        wind: '북동풍 2.4m/s',
+        closed: false,
+        refCoords: { lat: 35.5082, lng: 129.3712 },
+        simZones: [
+          { label: '0.4km (500m 이내)', distKm: 0.4, zoneName: '고위험 통제구역', pin: [204, 144], address: '울산 남구 매암동 A사업장 정문 앞 (반경 0.4km)',
+            actions: {
+              air: '창문·출입문 완전 밀폐, 환기장치 즉시 가동 중단 및 젖은 수건으로 틈새 차단',
+              water: '지하수 및 외부 저수조 음용 금지, 지자체 공급 병입수만 이용',
+              outdoor: '실외 활동 전면 금지 및 현장 통제선 밖으로 즉시 대피',
+              pet: '반려동물 실내 격리, 노출된 토양·화단 접촉 엄금'
+            }
+          },
+          { label: '1.1km (1.5km 이내)', distKm: 1.1, zoneName: '주의 경계구역', pin: [238, 122], address: '울산 남구 야음동 주민센터 인근 (반경 1.1km)',
+            actions: {
+              air: '실내 환기 자제 및 공기청정기 내부 순환 모드 유지 (외기 유입 차단)',
+              water: '수돗물 사용 가능하나 음용 시 끓여서 사용 권장 (잔류 불소 모니터링 중)',
+              outdoor: '노약자·호흡기 질환자 외출 자제, 외출 시 KF94 마스크 착용',
+              pet: '반려동물 실외 산책 단축, 귀가 시 발 세척 필수'
+            }
+          },
+          { label: '1.9km (2.2km 이내)', distKm: 1.9, zoneName: '관찰 모니터링 구역', pin: [270, 96], address: '울산 남구 선암동 공원 인근 (반경 1.9km)',
+            actions: {
+              air: '오전·오후 1일 2회 이내 단시간 환기 가능, 냄새 감지 시 즉시 창문 닫기',
+              water: '수돗물 정상 음용 가능 (수질 기준 이내 확인)',
+              outdoor: '일반 야외 활동 가능하나 장시간 격렬한 실외 운동은 자제',
+              pet: '반려동물 산책 가능, 웅덩이 음수 주의'
+            }
+          },
+          { label: '2.6km (안전권)', distKm: 2.6, zoneName: '영향권 외 안전지역', pin: [316, 56], address: '울산 남구 달동 시청 방면 (반경 2.6km)',
+            actions: {
+              air: '정상 자연 환기 가능 (대기 불산 불검출 구역)',
+              water: '상수도 수질 정상, 제한 없이 이용 가능',
+              outdoor: '모든 일상 야외 활동 정상 가능',
+              pet: '반려동물 야외 활동 및 토양 접촉 이상 없음'
+            }
+          }
+        ],
+        defaultZoneIdx: 1,
+        roadmap: [
+          { step: 1, title: '초기 방제 및 중화', status: 'done', detail: '누출 밸브 차단 및 소석회 중화 완료 (D+1)' },
+          { step: 2, title: '연속 정밀 모니터링', status: 'active', detail: '대기 3회 연속 기준 충족률 2/3회 · 예상 종료 D-3' },
+          { step: 3, title: '주민 영향 평가 및 복구', status: 'pending', detail: '인근 주거지 환경·건강 영향 조사 대기' },
+          { step: 4, title: '사후관리 공식 종료', status: 'pending', detail: '합동조사단 최종 적합 판정 후 해제' }
+        ],
+        charts: {
+          air: {
+            substance: '불산 (HF)',
+            unit: 'ppm',
+            limit: 0.1,
+            labels: ['D-Day', 'D+1', 'D+2', 'D+3', 'D+4', '오늘(D+5)'],
+            values: [0.42, 0.26, 0.14, 0.08, 0.06, 0.04],
+            statusNote: '연속 2회 기준 이내 (3회 충족 시 다음 단계)'
+          },
+          water: {
+            substance: '불소 (F⁻)',
+            unit: 'mg/L',
+            limit: 1.5,
+            labels: ['D-Day', 'D+1', 'D+2', 'D+3', 'D+4', '오늘(D+5)'],
+            values: [2.1, 1.7, 1.3, 1.0, 0.8, 0.7],
+            statusNote: '방류구·인근 하천 모두 관리기준 적합'
+          }
+        }
+      },
+      {
+        id: 'gumi-hno3',
+        title: '구미 국가산단 질산(HNO3) 누출',
+        chemical: '질산 (HNO3)',
+        facility: 'B케미칼',
+        region: '경북 구미시 국가산단',
+        elapsed: 'D+1',
+        stageLevel: 3,
+        stageLabel: '3단계: 경계',
+        summarySubtitle: '대기 HNO3 기준 0.5ppm 초과 · 수질 질산성질소 기준 10.0mg/L · 중화 작업 40% 완료',
+        roadmapSummary: '1단계 초기 방제 및 중화 작업 40% 완료 (진행중)',
+        wind: '남서풍 3.1m/s',
+        closed: false,
+        refCoords: { lat: 36.0991, lng: 128.3845 },
+        simZones: [
+          { label: '0.4km (500m 이내)', distKm: 0.4, zoneName: '고위험 대피구역', pin: [152, 138], address: '구미시 공단동 B케미칼 인근 (반경 0.4km)',
+            actions: {
+              air: '즉시 실내 대피 및 문틈 밀폐, 에어컨·환기팬 가동 전면 중지',
+              water: '인근 관정·지하수 사용 즉시 중단, 비상 급수차 이용',
+              outdoor: '대피 안내 문자에 따라 지정 대피소(공단복지관)로 이동',
+              pet: '반려동물 동반 실내 대피, 외부 토양·물 접촉 절대 금지'
+            }
+          },
+          { label: '1.1km (1.5km 이내)', distKm: 1.1, zoneName: '경계 대응구역', pin: [122, 108], address: '구미시 임수동 주거단지 (반경 1.1km)',
+            actions: {
+              air: '창문 개방 금지 및 실내 밀폐 유지 (질산 가스 0.5ppm 초과 경계)',
+              water: '수돗물 이상 없으나 저수조 점검 완료 전까지 끓여 마시기 권장',
+              outdoor: '불필요한 외출 자제, 부득이한 외출 시 보안경·방독/KF94 마스크 착용',
+              pet: '실외 산책 전면 중단 및 베란다 출입 제한'
+            }
+          },
+          { label: '1.9km (2.2km 이내)', distKm: 1.9, zoneName: '주의 관찰구역', pin: [94, 78], address: '구미시 진평동 상가 일대 (반경 1.9km)',
+            actions: {
+              air: '외부 창문 닫고 공기청정기 가동, 시큼한 냄새 시 즉시 신고',
+              water: '상수도 정상 이용 가능 (실시간 수질 감시 가동 중)',
+              outdoor: '어린이·노약자 실외 체육활동 자제',
+              pet: '반려동물 짧은 배변 산책만 허용, 귀가 후 눈·코 닦아주기'
+            }
+          },
+          { label: '2.6km (안전권)', distKm: 2.6, zoneName: '영향권 외 안전지역', pin: [46, 48], address: '구미시 인동동 중심가 (반경 2.6km)',
+            actions: {
+              air: '정상 환기 가능하나 풍향 변화에 따른 안전문자 주시',
+              water: '수돗물 정상 음용 가능',
+              outdoor: '일반 야외 활동 가능',
+              pet: '반려동물 야외 활동 정상 가능'
+            }
+          }
+        ],
+        defaultZoneIdx: 0,
+        roadmap: [
+          { step: 1, title: '초기 방제 및 중화', status: 'active', detail: '누출 탱크 차단 및 탄산나트륨 중화 작업 40% 완료' },
+          { step: 2, title: '연속 정밀 모니터링', status: 'pending', detail: '중화 완료 후 3회 연속 기준 충족 측정 예정' },
+          { step: 3, title: '주민 영향 평가 및 복구', status: 'pending', detail: '농작물·주거지 잔류 산성도 정밀 조사 대기' },
+          { step: 4, title: '사후관리 공식 종료', status: 'pending', detail: '전 매체 안전 확인 후 최종 종료' }
+        ],
+        charts: {
+          air: {
+            substance: '질산 (HNO3)',
+            unit: 'ppm',
+            limit: 0.5,
+            labels: ['D-Day', '+4시간', '+8시간', '+12시간', '+18시간', '오늘(D+1)'],
+            values: [1.85, 1.42, 1.15, 0.94, 0.78, 0.68],
+            statusNote: '관리기준(0.5ppm) 초과 상태 · 방제 중화 진행중'
+          },
+          water: {
+            substance: '질산성질소 (NO3-N)',
+            unit: 'mg/L',
+            limit: 10.0,
+            labels: ['D-Day', '+4시간', '+8시간', '+12시간', '+18시간', '오늘(D+1)'],
+            values: [14.2, 13.5, 12.1, 11.4, 10.8, 10.4],
+            statusNote: '관리기준(10.0mg/L) 소폭 초과 · 차단막 가동 중'
+          }
+        }
+      },
+      {
+        id: 'sihwa-h2so4',
+        title: '경기 시화 산단 황산(H2SO4) 유출',
+        chemical: '황산 (H2SO4)',
+        facility: 'C정밀',
+        region: '경기 시흥시 시화국가산단',
+        elapsed: 'D+12',
+        stageLevel: 1,
+        stageLabel: '1단계: 안전',
+        summarySubtitle: '대기 황산 흄 기준 0.2mg/m³ · 수질 황산이온 기준 200mg/L · 사후관리 공식 종료',
+        roadmapSummary: '전 단계(1~4단계) 완료 및 사후관리 공식 종료',
+        wind: '서풍 1.8m/s',
+        closed: true,
+        refCoords: { lat: 37.3264, lng: 126.7318 },
+        simZones: [
+          { label: '0.4km (500m 이내)', distKm: 0.4, zoneName: '종료 안전구역', pin: [200, 184], address: '시흥시 정왕동 C정밀 인근 (반경 0.4km)',
+            actions: {
+              air: '정상 자연 환기 및 공조장치 가동 가능 (황산 흄 불검출)',
+              water: '상수도 및 방류수 수질 전 항목 적합, 정상 이용 가능',
+              outdoor: '통제 해제 완료 · 모든 야외 활동 정상 가능',
+              pet: '토양 중화 및 복구 완료 · 반려동물 산책 정상 가능'
+            }
+          },
+          { label: '1.1km (1.5km 이내)', distKm: 1.1, zoneName: '종료 안전구역', pin: [232, 210], address: '시흥시 정왕2동 주거단지 (반경 1.1km)',
+            actions: {
+              air: '정상 환기 가능 (대기질 측정 결과 평상시 수준 회복)',
+              water: '수돗물 정상 음용 가능',
+              outdoor: '제한 없이 모든 실외 활동 가능',
+              pet: '반려동물 야외 활동 및 공원 이용 정상 가능'
+            }
+          },
+          { label: '1.9km (2.2km 이내)', distKm: 1.9, zoneName: '종료 안전구역', pin: [262, 236], address: '시흥시 배곧동 일대 (반경 1.9km)',
+            actions: {
+              air: '일상 환기 및 냉난방 정상 가동',
+              water: '상수도 정상 이용 가능',
+              outdoor: '정상 야외 활동 가능',
+              pet: '정상 산책 및 토양 접촉 안전'
+            }
+          },
+          { label: '2.6km (안전권)', distKm: 2.6, zoneName: '안전지역', pin: [306, 266], address: '시흥시 오이도 방면 (반경 2.6km)',
+            actions: {
+              air: '정상 환기 가능',
+              water: '정상 음용 가능',
+              outdoor: '정상 활동 가능',
+              pet: '정상 산책 가능'
+            }
+          }
+        ],
+        defaultZoneIdx: 2,
+        roadmap: [
+          { step: 1, title: '초기 방제 및 중화', status: 'done', detail: '유출 차단 및 중화 처리 100% 완료 (D+2)' },
+          { step: 2, title: '연속 정밀 모니터링', status: 'done', detail: '대기·수질 5회 연속 기준 적합 판정 (D+7)' },
+          { step: 3, title: '주민 영향 평가 및 복구', status: 'done', detail: '토양 시료 분석 및 폐기물 반출 완료 (D+10)' },
+          { step: 4, title: '사후관리 공식 종료', status: 'done', detail: '환경부·지자체 합동 공식 종료 선언 (D+12)' }
+        ],
+        charts: {
+          air: {
+            substance: '황산 흄 (H2SO4)',
+            unit: 'mg/m³',
+            limit: 0.2,
+            labels: ['D-Day', 'D+2', 'D+5', 'D+8', 'D+10', '오늘(D+12)'],
+            values: [0.65, 0.38, 0.18, 0.09, 0.05, 0.03],
+            statusNote: '연속 4회 기준 적합 · 대기 모니터링 종료'
+          },
+          water: {
+            substance: '황산이온 (SO4²⁻)',
+            unit: 'mg/L',
+            limit: 200,
+            labels: ['D-Day', 'D+2', 'D+5', 'D+8', 'D+10', '오늘(D+12)'],
+            values: [310, 245, 185, 142, 118, 95],
+            statusNote: '수질 기준(200mg/L) 이하 안정 유지 · 종료'
+          }
+        }
+      }
+    ];
+
+    const STAGE_META = [
+      { level: 1, name: '안전', badgeCls: 'bg-emerald-100 text-emerald-800 border border-emerald-200', lightBg: 'bg-emerald-500', textCls: 'text-emerald-600' },
+      { level: 2, name: '주의', badgeCls: 'bg-amber-100 text-amber-800 border border-amber-200', lightBg: 'bg-amber-400', textCls: 'text-amber-600' },
+      { level: 3, name: '경계', badgeCls: 'bg-orange-100 text-orange-800 border border-orange-200', lightBg: 'bg-orange-500', textCls: 'text-orange-600' },
+      { level: 4, name: '심각', badgeCls: 'bg-rose-100 text-rose-800 border border-rose-200', lightBg: 'bg-rose-600', textCls: 'text-rose-600' }
+    ];
+
+    const STORAGE_KEY = 'chem_guard_citizen_reports_v1';
+
+    const DEFAULT_REPORTS = [
+      {
+        id: 'rep-seed-1',
+        incidentId: 'gumi-hno3',
+        incidentTitle: '구미 국가산단 질산(HNO3) 누출',
+        type: '악취·가스 냄새',
+        location: '구미시 공단동 B케미칼 북측 도로 (반경 0.7km)',
+        detail: '바람이 불어올 때 약한 시큼한 냄새가 느껴져 창문을 닫고 실내 대기 중입니다.',
+        createdAt: '2026-11-26 13:40'
+      },
+      {
+        id: 'rep-seed-2',
+        incidentId: 'ulsan-hf',
+        incidentTitle: '울산 미포국가산단 불산(HF) 누출',
+        type: '연무·연기',
+        location: '울산 남구 야음동 공원 인근 (반경 1.2km)',
+        detail: '현재 눈에 보이는 연무는 없으며, 안내 문자대로 실내 환기를 자제하고 있습니다.',
+        createdAt: '2026-11-26 11:15'
+      }
+    ];
+
+    // =========================================================
+    // 2. State
+    // =========================================================
+    let state = {
+      activeIncidentId: 'ulsan-hf',
+      activeMedium: 'air', // 'air' | 'water'
+      activeZoneIdx: 1,
+      gpsMode: 'simulation', // 'simulation' | 'real'
+      realDistKm: null,
+      realCoordsText: null,
+      selectedReportType: '악취·가스 냄새',
+      filterCurrentIncidentOnly: false,
+      reports: []
+    };
+
+    let chartInstance = null;
+
+    // =========================================================
+    // 3. Storage Helpers
+    // =========================================================
+    function loadReports() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            state.reports = parsed;
+            return;
+          }
+        }
+      } catch (e) {
+        // Fallback when localStorage is blocked
+      }
+      state.reports = [...DEFAULT_REPORTS];
+    }
+
+    function saveReports() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.reports));
+      } catch (e) {
+        // Ignore storage errors safely
+      }
+    }
+
+    // =========================================================
+    // 4. Utility Helpers
+    // =========================================================
+    function getActiveIncident() {
+      return INCIDENTS.find(i => i.id === state.activeIncidentId) || INCIDENTS[0];
+    }
+
+    function showToast(msg, iconCls = 'fa-circle-check text-emerald-400') {
+      const banner = document.getElementById('toastBanner');
+      const icon = document.getElementById('toastIcon');
+      const text = document.getElementById('toastMessage');
+      icon.className = `fa-solid ${iconCls}`;
+      text.textContent = msg;
+      banner.classList.remove('hidden');
+      banner.classList.add('flex');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        banner.classList.add('hidden');
+        banner.classList.remove('flex');
+      }, 3400);
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const toRad = d => (d * Math.PI) / 180;
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function updateClock() {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const str = `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      const el = document.getElementById('liveClock');
+      if (el) el.textContent = `${str} 실시간`;
+    }
+
+    // =========================================================
+    // 5. Render Functions
+    // =========================================================
+    function renderSidebar() {
+      const container = document.getElementById('incidentListContainer');
+      container.innerHTML = INCIDENTS.map(inc => {
+        const isActive = inc.id === state.activeIncidentId;
+        const meta = STAGE_META.find(s => s.level === inc.stageLevel);
+        return `
+          <button type="button" data-incident-id="${inc.id}"
+            class="incident-card w-full text-left p-3.5 rounded-xl border transition cursor-pointer ${
+              isActive
+                ? 'bg-sky-50/90 border-sky-500 ring-2 ring-sky-500/20 shadow-sm'
+                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+            }">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${meta.badgeCls}">
+                ${inc.stageLabel}
+              </span>
+              <span class="text-[11px] font-bold text-slate-500">${inc.elapsed} · ${inc.facility}</span>
+            </div>
+            <div class="font-bold text-sm text-slate-900 leading-snug mb-1">${inc.title}</div>
+            <div class="text-xs text-slate-500 flex items-center justify-between">
+              <span>${inc.chemical}</span>
+              ${inc.closed ? '<span class="text-emerald-600 font-semibold"><i class="fa-solid fa-check-double mr-1"></i>종료</span>' : '<span class="text-sky-600 font-semibold">모니터링 중</span>'}
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.incident-card').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-incident-id');
+          if (id && id !== state.activeIncidentId) {
+            state.activeIncidentId = id;
+            const inc = getActiveIncident();
+            state.activeZoneIdx = inc.defaultZoneIdx;
+            state.gpsMode = 'simulation';
+            state.realDistKm = null;
+            state.realCoordsText = null;
+            renderAll();
+          }
+          closeMobileSidebar();
+        });
+      });
+    }
+
+    function renderHeaderAndTrafficLight() {
+      const inc = getActiveIncident();
+      const meta = STAGE_META.find(s => s.level === inc.stageLevel);
+
+      const banner = document.getElementById('closureBanner');
+      if (inc.closed) {
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      document.getElementById('incElapsedBadge').textContent = inc.elapsed;
+      const stageBadge = document.getElementById('incStageBadge');
+      stageBadge.textContent = inc.stageLabel;
+      stageBadge.className = `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-bold ${meta.badgeCls}`;
+
+      document.getElementById('incFacilityBadge').querySelector('span').textContent = inc.facility;
+      document.getElementById('incTitle').textContent = inc.title;
+      document.getElementById('incSubtitle').textContent = inc.summarySubtitle;
+
+      const statusText = document.getElementById('trafficLightStatusText');
+      statusText.textContent = `현재: ${meta.name} 단계`;
+      statusText.className = `font-bold ${meta.textCls}`;
+
+      const tlContainer = document.getElementById('trafficLightContainer');
+      tlContainer.innerHTML = STAGE_META.map(s => {
+        const active = s.level === inc.stageLevel;
+        return `
+          <div class="flex flex-col items-center px-2 py-1.5 rounded-lg border transition ${
+            active ? 'bg-white border-slate-300 shadow-sm scale-[1.03]' : 'bg-slate-100/60 border-transparent opacity-45'
+          }">
+            <span class="w-4 h-4 rounded-full ${s.lightBg} ${active ? 'ring-4 ring-slate-200' : ''}"></span>
+            <span class="text-[11px] font-bold text-slate-800 mt-1">${s.level}단계</span>
+            <span class="text-[10px] font-medium text-slate-500">${s.name}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderGpsAndMap() {
+      const inc = getActiveIncident();
+      const zone = inc.simZones[state.activeZoneIdx] || inc.simZones[0];
+
+      // Zone buttons styling
+      document.querySelectorAll('.zone-sim-btn').forEach(btn => {
+        const idx = Number(btn.getAttribute('data-zone-idx'));
+        const isSelected = idx === state.activeZoneIdx;
+        btn.className = `zone-sim-btn px-2.5 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
+          isSelected
+            ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+        }`;
+      });
+
+      const gpsLabel = document.getElementById('gpsStatusLabel');
+      if (state.gpsMode === 'real' && state.realDistKm !== null) {
+        gpsLabel.innerHTML = `<span class="text-emerald-700 font-semibold"><i class="fa-solid fa-check-circle mr-1"></i>실제 GPS 좌표 탐색 완료</span> · ${zone.zoneName} (${state.realDistKm.toFixed(2)}km)`;
+      } else {
+        gpsLabel.innerHTML = `<span class="text-sky-700 font-semibold">${zone.zoneName}</span> · ${zone.address}`;
+      }
+
+      // 4 Action Cards
+      const cardMeta = [
+        { key: 'air', title: '실내 환기', icon: 'fa-house-medical', color: 'sky' },
+        { key: 'water', title: '식수 이용', icon: 'fa-glass-water', color: 'blue' },
+        { key: 'outdoor', title: '야외 활동', icon: 'fa-person-walking', color: 'amber' },
+        { key: 'pet', title: '반려동물·토양', icon: 'fa-paw', color: 'emerald' }
+      ];
+
+      const cardsGrid = document.getElementById('actionCardsGrid');
+      cardsGrid.innerHTML = cardMeta.map(c => {
+        const bgMap = {
+          sky: 'bg-sky-50 border-sky-200 text-sky-700',
+          blue: 'bg-blue-50 border-blue-200 text-blue-700',
+          amber: 'bg-amber-50 border-amber-200 text-amber-700',
+          emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700'
+        };
+        return `
+          <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white transition flex flex-col gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg border flex items-center justify-center text-xs ${bgMap[c.color]}">
+                <i class="fa-solid ${c.icon}"></i>
+              </span>
+              <span class="text-sm font-bold text-slate-800">${c.title}</span>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">${zone.actions[c.key]}</p>
+          </div>
+        `;
+      }).join('');
+
+      // SVG Map Updates
+      document.getElementById('mapWindBadge').querySelector('span').textContent = inc.wind;
+      document.getElementById('svgFacilityLabel').textContent = inc.facility;
+      const pinGroup = document.getElementById('svgUserPinGroup');
+      pinGroup.setAttribute('transform', `translate(${zone.pin[0]}, ${zone.pin[1]})`);
+
+      const distText = state.gpsMode === 'real' && state.realDistKm !== null
+        ? `실측 이격거리: ${state.realDistKm.toFixed(2)}km (${zone.zoneName})`
+        : `추정 이격거리: ${zone.distKm}km (${zone.label})`;
+      document.getElementById('mapDistanceReadout').textContent = distText;
+      document.getElementById('mapCoordReadout').textContent = state.realCoordsText || '시뮬레이션 구역 좌표';
+    }
+
+    function renderRoadmap() {
+      const inc = getActiveIncident();
+      document.getElementById('roadmapSummaryText').textContent = inc.roadmapSummary;
+
+      const container = document.getElementById('roadmapStepsContainer');
+      container.innerHTML = inc.roadmap.map(step => {
+        if (step.status === 'done') {
+          return `
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 flex flex-col justify-between gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-emerald-700">${step.step}단계</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-600 text-white">
+                  <i class="fa-solid fa-check"></i> 완료
+                </span>
+              </div>
+              <div>
+                <div class="font-bold text-sm text-slate-900">${step.title}</div>
+                <p class="text-xs text-emerald-800 mt-1 leading-relaxed">${step.detail}</p>
+              </div>
+            </div>
+          `;
+        }
+        if (step.status === 'active') {
+          return `
+            <div class="rounded-xl border-2 border-blue-600 bg-blue-50/70 p-4 flex flex-col justify-between gap-2 shadow-sm pulse-active">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-blue-700">${step.step}단계</span>
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-600 text-white">
+                  <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                  진행중
+                </span>
+              </div>
+              <div>
+                <div class="font-bold text-sm text-slate-900">${step.title}</div>
+                <p class="text-xs text-blue-900 font-medium mt-1 leading-relaxed">${step.detail}</p>
+              </div>
+            </div>
+          `;
+        }
+        return `
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col justify-between gap-2 opacity-65">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-500">${step.step}단계</span>
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600">
+                대기
+              </span>
+            </div>
+            <div>
+              <div class="font-bold text-sm text-slate-700">${step.title}</div>
+              <p class="text-xs text-slate-500 mt-1 leading-relaxed">${step.detail}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderChartSection() {
+      const inc = getActiveIncident();
+      const data = inc.charts[state.activeMedium];
+
+      // Update Tab buttons
+      document.querySelectorAll('.medium-tab-btn').forEach(btn => {
+        const m = btn.getAttribute('data-medium');
+        const active = m === state.activeMedium;
+        btn.className = `medium-tab-btn px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition cursor-pointer ${
+          active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+        }`;
+      });
+
+      const peak = Math.max(...data.values);
+      const latest = data.values[data.values.length - 1];
+      const isExceeding = latest > data.limit;
+
+      document.getElementById('summaryPeakValue').textContent = `${peak} ${data.unit}`;
+      document.getElementById('summaryLatestValue').textContent = `(최근 ${latest} ${data.unit})`;
+      document.getElementById('summaryLimitValue').textContent = `${data.limit} ${data.unit}`;
+      document.getElementById('summarySubstanceName').textContent = data.substance;
+
+      const statusBadge = document.getElementById('summaryStatusBadge');
+      if (isExceeding) {
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200';
+        statusBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> 초과';
+      } else {
+        statusBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200';
+        statusBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> 적합';
+      }
+      document.getElementById('summaryStatusNote').textContent = data.statusNote;
+
+      // Render Chart.js
+      const ctx = document.getElementById('measurementChart').getContext('2d');
+      const thresholdSeries = data.labels.map(() => data.limit);
+      const lineColor = state.activeMedium === 'air' ? '#0284c7' : '#2563eb';
+      const fillColor = state.activeMedium === 'air' ? 'rgba(2, 132, 199, 0.12)' : 'rgba(37, 99, 235, 0.12)';
+
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: [
+            {
+              label: `${data.substance} 실측값 (${data.unit})`,
+              data: data.values,
+              borderColor: lineColor,
+              backgroundColor: fillColor,
+              borderWidth: 3,
+              pointBackgroundColor: '#ffffff',
+              pointBorderColor: lineColor,
+              pointBorderWidth: 2.5,
+              pointRadius: 5,
+              pointHoverRadius: 7,
+              fill: true,
+              tension: 0.32
+            },
+            {
+              label: `주민 관리기준 (${data.limit} ${data.unit})`,
+              data: thresholdSeries,
+              borderColor: '#e11d48',
+              borderWidth: 2,
+              borderDash: [6, 5],
+              pointRadius: 0,
+              pointHoverRadius: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'top',
+              align: 'end',
+              labels: { boxWidth: 14, font: { family: 'Pretendard', size: 12 } }
+            },
+            tooltip: {
+              backgroundColor: '#0f172a',
+              titleFont: { family: 'Pretendard', size: 12 },
+              bodyFont: { family: 'Pretendard', size: 12 },
+              padding: 10,
+              cornerRadius: 8
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { family: 'Pretendard', size: 11 }, color: '#64748b' }
+            },
+            y: {
+              beginAtZero: true,
+              suggestedMax: Math.max(peak, data.limit) * 1.2,
+              grid: { color: '#e2e8f0' },
+              ticks: { font: { family: 'Pretendard', size: 11 }, color: '#64748b' }
+            }
+          }
+        }
+      });
+    }
+
+    function renderReportsFeed() {
+      const filterBtn = document.getElementById('filterIncidentReportsBtn');
+      filterBtn.textContent = state.filterCurrentIncidentOnly ? '전체 사고 제보 보기' : '현재 사고만 보기';
+      filterBtn.className = `px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+        state.filterCurrentIncidentOnly
+          ? 'border-sky-500 bg-sky-50 text-sky-700'
+          : 'border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700'
+      }`;
+
+      const list = state.filterCurrentIncidentOnly
+        ? state.reports.filter(r => r.incidentId === state.activeIncidentId)
+        : state.reports;
+
+      document.getElementById('reportCountBadge').textContent = `${list.length}건`;
+
+      const feed = document.getElementById('citizenReportsFeed');
+      if (list.length === 0) {
+        feed.innerHTML = `
+          <div class="col-span-full text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-sm">
+            해당 사고에 등록된 주민 현장 제보가 아직 없습니다.
+          </div>
+        `;
+        return;
+      }
+
+      const typeBadgeCls = {
+        '악취·가스 냄새': 'bg-amber-100 text-amber-800 border-amber-200',
+        '연무·연기': 'bg-slate-200 text-slate-800 border-slate-300',
+        '신체 증상': 'bg-rose-100 text-rose-800 border-rose-200',
+        '수질·토양 이상': 'bg-sky-100 text-sky-800 border-sky-200'
+      };
+
+      feed.innerHTML = list.map(rep => `
+        <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col justify-between gap-2">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${typeBadgeCls[rep.type] || 'bg-slate-100 text-slate-700'}">
+                ${rep.type}
+              </span>
+              <span class="text-[11px] text-slate-400">${rep.createdAt}</span>
+            </div>
+            <div class="text-xs font-bold text-slate-700 mb-1">${rep.incidentTitle}</div>
+            <p class="text-xs sm:text-sm text-slate-800 leading-relaxed">${escapeHtml(rep.detail)}</p>
+          </div>
+          <div class="text-[11px] text-slate-500 flex items-center gap-1 pt-2 border-t border-slate-200/70">
+            <i class="fa-solid fa-location-dot text-rose-500"></i>
+            <span class="truncate">${escapeHtml(rep.location)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderAll() {
+      renderSidebar();
+      renderHeaderAndTrafficLight();
+      renderGpsAndMap();
+      renderRoadmap();
+      renderChartSection();
+      renderReportsFeed();
+    }
+
+    // =========================================================
+    // 6. Interactive Handlers (GPS, Modals, Sidebar, Form)
+    // =========================================================
+    function openMobileSidebar() {
+      document.getElementById('incidentSidebar').classList.remove('-translate-x-full');
+      document.getElementById('sidebarBackdrop').classList.remove('hidden');
+    }
+
+    function closeMobileSidebar() {
+      document.getElementById('incidentSidebar').classList.add('-translate-x-full');
+      document.getElementById('sidebarBackdrop').classList.add('hidden');
+    }
+
+    function handleGpsSearch() {
+      const btn = document.getElementById('gpsSearchBtn');
+      const btnIcon = document.getElementById('gpsBtnIcon');
+      const btnText = document.getElementById('gpsBtnText');
+      const sweep = document.getElementById('svgRadarSweep');
+      const inc = getActiveIncident();
+
+      btn.disabled = true;
+      btnIcon.className = 'fa-solid fa-spinner fa-spin';
+      btnText.textContent = '위치 탐색 중...';
+      sweep.classList.remove('hidden');
+
+      const finishFallback = (reasonMsg) => {
+        setTimeout(() => {
+          sweep.classList.add('hidden');
+          btn.disabled = false;
+          btnIcon.className = 'fa-solid fa-satellite-dish';
+          btnText.textContent = 'GPS 탐색';
+          state.gpsMode = 'simulation';
+          state.realDistKm = null;
+          state.realCoordsText = null;
+          state.activeZoneIdx = inc.defaultZoneIdx;
+          renderGpsAndMap();
+          showToast(reasonMsg, 'fa-location-crosshairs text-sky-400');
+        }, 1100);
+      };
+
+      if (!navigator.geolocation) {
+        finishFallback('시뮬레이션 구역 데이터로 자동 전환되었습니다.');
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setTimeout(() => {
+            sweep.classList.add('hidden');
+            btn.disabled = false;
+            btnIcon.className = 'fa-solid fa-satellite-dish';
+            btnText.textContent = 'GPS 탐색';
+
+            const { latitude, longitude } = pos.coords;
+            const rawDist = haversineKm(latitude, longitude, inc.refCoords.lat, inc.refCoords.lng);
+            // If user is far from industrial complex (>15km), map cleanly to realistic demo zone or show real distance
+            if (rawDist > 15) {
+              state.gpsMode = 'simulation';
+              state.realDistKm = null;
+              state.realCoordsText = `현위치(${latitude.toFixed(2)}, ${longitude.toFixed(2)}) · 시연 구역 매핑`;
+              state.activeZoneIdx = inc.defaultZoneIdx;
+              renderGpsAndMap();
+              showToast('원거리 확인: 해당 사고 시뮬레이션 구역으로 자동 전환되었습니다.', 'fa-location-dot text-sky-400');
+            } else {
+              state.gpsMode = 'real';
+              state.realDistKm = rawDist;
+              state.realCoordsText = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+              state.activeZoneIdx = rawDist <= 0.5 ? 0 : rawDist <= 1.5 ? 1 : rawDist <= 2.2 ? 2 : 3;
+              renderGpsAndMap();
+              showToast(`GPS 위치 확인 완료 (${rawDist.toFixed(2)}km)`, 'fa-circle-check text-emerald-400');
+            }
+          }, 950);
+        },
+        () => {
+          finishFallback('위치 권한 미허용: 시뮬레이션 구역 데이터로 자동 전환되었습니다.');
+        },
+        { enableHighAccuracy: false, timeout: 2500, maximumAge: 60000 }
+      );
+    }
+
+    function openReportModal() {
+      const select = document.getElementById('reportIncidentSelect');
+      select.innerHTML = INCIDENTS.map(i => `<option value="${i.id}" ${i.id === state.activeIncidentId ? 'selected' : ''}>${i.title}</option>`).join('');
+      updateReportTypeButtons();
+      document.getElementById('reportFormError').classList.add('hidden');
+      const modal = document.getElementById('reportModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeReportModal() {
+      const modal = document.getElementById('reportModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function updateReportTypeButtons() {
+      document.querySelectorAll('.report-type-btn').forEach(btn => {
+        const t = btn.getAttribute('data-type');
+        const active = t === state.selectedReportType;
+        btn.className = `report-type-btn px-3 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold flex items-center gap-2 transition cursor-pointer ${
+          active ? 'bg-rose-50 border-rose-500 text-rose-900 ring-2 ring-rose-500/20' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+        }`;
+      });
+    }
+
+    function initEvents() {
+      document.getElementById('mobileSidebarToggle').addEventListener('click', openMobileSidebar);
+      document.getElementById('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
+
+      document.getElementById('gpsSearchBtn').addEventListener('click', handleGpsSearch);
+
+      document.querySelectorAll('.zone-sim-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.activeZoneIdx = Number(btn.getAttribute('data-zone-idx'));
+          state.gpsMode = 'simulation';
+          state.realDistKm = null;
+          state.realCoordsText = null;
+          renderGpsAndMap();
+        });
+      });
+
+      document.querySelectorAll('.medium-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.activeMedium = btn.getAttribute('data-medium');
+          renderChartSection();
+        });
+      });
+
+      // Criteria Modal
+      const criteriaModal = document.getElementById('criteriaModal');
+      const closeCriteria = () => {
+        criteriaModal.classList.add('hidden');
+        criteriaModal.classList.remove('flex');
+      };
+      document.getElementById('openCriteriaModalBtn').addEventListener('click', () => {
+        criteriaModal.classList.remove('hidden');
+        criteriaModal.classList.add('flex');
+      });
+      document.getElementById('closeCriteriaModalBtn').addEventListener('click', closeCriteria);
+      document.getElementById('confirmCriteriaModalBtn').addEventListener('click', closeCriteria);
+      criteriaModal.addEventListener('click', (e) => { if (e.target === criteriaModal) closeCriteria(); });
+
+      // Report Modal
+      document.getElementById('openReportModalBtn').addEventListener('click', openReportModal);
+      document.getElementById('openReportModalBtn2').addEventListener('click', openReportModal);
+      document.getElementById('closeReportModalBtn').addEventListener('click', closeReportModal);
+      document.getElementById('cancelReportModalBtn').addEventListener('click', closeReportModal);
+      document.getElementById('reportModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('reportModal')) closeReportModal();
+      });
+
+      document.querySelectorAll('.report-type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.selectedReportType = btn.getAttribute('data-type');
+          updateReportTypeButtons();
+        });
+      });
+
+      document.getElementById('autoFillLocationBtn').addEventListener('click', () => {
+        const incId = document.getElementById('reportIncidentSelect').value;
+        const inc = INCIDENTS.find(i => i.id === incId) || getActiveIncident();
+        const zone = inc.simZones[state.activeZoneIdx] || inc.simZones[0];
+        const locInput = document.getElementById('reportLocationInput');
+
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              locInput.value = `${inc.region} 인근 (GPS ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`;
+              showToast('현재 위치가 자동으로 입력되었습니다.');
+            },
+            () => {
+              locInput.value = zone.address;
+              showToast('시뮬레이션 구역 주소로 자동 입력되었습니다.', 'fa-location-dot text-sky-400');
+            },
+            { timeout: 2000 }
+          );
+        } else {
+          locInput.value = zone.address;
+          showToast('시뮬레이션 구역 주소로 자동 입력되었습니다.', 'fa-location-dot text-sky-400');
+        }
+      });
+
+      document.getElementById('reportForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const incidentId = document.getElementById('reportIncidentSelect').value;
+        const inc = INCIDENTS.find(i => i.id === incidentId) || getActiveIncident();
+        const location = document.getElementById('reportLocationInput').value.trim();
+        const detail = document.getElementById('reportDetailInput').value.trim();
+        const errBox = document.getElementById('reportFormError');
+
+        if (!location || !detail) {
+          errBox.textContent = '현재 위치와 상세 내용을 모두 입력해 주세요.';
+          errBox.classList.remove('hidden');
+          return;
+        }
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const createdAt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+        const newReport = {
+          id: `rep-${Date.now()}`,
+          incidentId: inc.id,
+          incidentTitle: inc.title,
+          type: state.selectedReportType,
+          location,
+          detail,
+          createdAt
+        };
+
+        state.reports.unshift(newReport);
+        saveReports();
+        document.getElementById('reportForm').reset();
+        closeReportModal();
+        renderReportsFeed();
+        showToast('현장 제보가 등록되어 실시간 현황에 반영되었습니다.');
+      });
+
+      document.getElementById('filterIncidentReportsBtn').addEventListener('click', () => {
+        state.filterCurrentIncidentOnly = !state.filterCurrentIncidentOnly;
+        renderReportsFeed();
+      });
+    }
+
+    // =========================================================
+    // 7. Bootstrap
+    // =========================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      loadReports();
+      updateClock();
+      setInterval(updateClock, 30000);
+      initEvents();
+      renderAll();
+    });
+  </script>
+</body>
+</html>
